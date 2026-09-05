@@ -1,0 +1,4 @@
+# Cairn — local-only paths
+.trash/
+.cairn/
+.DS_Store
