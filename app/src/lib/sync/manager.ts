@@ -2,7 +2,7 @@ import { useSettings } from '../settings'
 import { toast } from '../toasts'
 import type { SyncConfig } from '../types'
 import { applyFiles, setChangeListener, setMeta, useVault } from '../vault'
-import { syncOnce, type VaultAdapter } from './engine'
+import { folderPrefix, syncOnce, type VaultAdapter } from './engine'
 import { GitHubApi, GitHubError } from './github'
 import { titleOf } from '../paths'
 import { flushAll } from '../flush'
@@ -58,7 +58,7 @@ export async function runSync(): Promise<void> {
       }
       setStatus({ status: 'syncing', error: null })
       try {
-        const res = await syncOnce(new GitHubApi(cfg), adapter)
+        const res = await syncOnce(new GitHubApi(cfg), adapter, Date.now, folderPrefix(cfg.folder))
         failures = 0
         setStatus({ status: 'idle', lastSync: Date.now(), error: null })
         for (const c of res.conflicts) {
@@ -109,13 +109,28 @@ export function startAutoSync(): () => void {
   }
 }
 
-export async function testConnection(cfg: SyncConfig): Promise<{ ok: true; defaultBranch: string } | { ok: false; error: string }> {
+export interface RepoCheck {
+  ok: true
+  defaultBranch: string
+  isPublic: boolean
+  /** The repo also holds app code (Cairn's own app/ folder, a package.json…). */
+  hasCode: boolean
+}
+
+export async function testConnection(cfg: SyncConfig): Promise<RepoCheck | { ok: false; error: string }> {
   try {
-    const repo = await new GitHubApi(cfg).getRepo()
+    const api = new GitHubApi(cfg)
+    const repo = await api.getRepo()
     if (repo.permissions && repo.permissions.push === false) {
       return { ok: false, error: "The token can read this repo but can't write to it. Give it Contents: Read and write." }
     }
-    return { ok: true, defaultBranch: repo.default_branch }
+    let hasCode = false
+    try {
+      hasCode = await api.looksLikeCode()
+    } catch {
+      /* empty repo or no access to the listing — not a blocker */
+    }
+    return { ok: true, defaultBranch: repo.default_branch, isPublic: !repo.private, hasCode }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }

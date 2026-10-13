@@ -1,14 +1,15 @@
 import { CalendarDays, Clock, CloudOff, FilePlus, FileText, Network, Search, Smartphone } from 'lucide-react'
 import { useMemo } from 'react'
 import { relativeTime, useNoteIcons } from '../lib/hooks'
+import { NoteIcon } from './NoteIcon'
 import { splitFrontmatter } from '../lib/markdown/frontmatter'
 import { dirname, titleOf } from '../lib/paths'
 import { navigate, openNote } from '../lib/router'
 import { useSettings } from '../lib/settings'
-import { openDailyNote, useVault } from '../lib/vault'
+import { useVault } from '../lib/vault'
 import { newNoteIn } from './FileTree'
 import { isStandalone } from './InstallHint'
-import { useUI } from './uiState'
+import { openCalendar, useUI } from './uiState'
 
 function preview(content: string): string {
   return splitFrontmatter(content)
@@ -50,9 +51,9 @@ export function HomePage() {
             <FilePlus size={20} />
             <span>New page</span>
           </button>
-          <button type="button" className="quick" onClick={() => openNote(openDailyNote())}>
+          <button type="button" className="quick" onClick={() => openCalendar()}>
             <CalendarDays size={20} />
-            <span>Today’s note</span>
+            <span>Calendar</span>
           </button>
           <button type="button" className="quick" onClick={() => useUI.setState({ palette: 'search' })}>
             <Search size={20} />
@@ -89,7 +90,7 @@ export function HomePage() {
             <div className="cards">
               {recent.map((p) => (
                 <button type="button" key={p} className="card" onClick={() => openNote(p)}>
-                  <span className="card-icon">{icons[p] ?? <FileText size={22} strokeWidth={1.5} />}</span>
+                  <span className="card-icon">{icons[p] ? <NoteIcon value={icons[p]} size={26} /> : <FileText size={22} strokeWidth={1.5} />}</span>
                   <span className="card-title">{titleOf(p)}</span>
                   <span className="card-preview">{preview(files[p]?.content ?? '') || 'Empty page'}</span>
                   <span className="card-meta">{relativeTime(files[p]?.mtime ?? Date.now())}</span>
@@ -105,7 +106,7 @@ export function HomePage() {
             <div className="list">
               {edited.map((p) => (
                 <button type="button" key={p} className="list-row" onClick={() => openNote(p)}>
-                  <span className="list-icon">{icons[p] ?? <FileText size={16} strokeWidth={1.75} />}</span>
+                  <span className="list-icon">{icons[p] ? <NoteIcon value={icons[p]} size={17} /> : <FileText size={16} strokeWidth={1.75} />}</span>
                   <span className="list-title">{titleOf(p)}</span>
                   {dirname(p) && <span className="list-folder">{dirname(p)}</span>}
                   <span className="list-meta">{relativeTime(files[p]?.mtime ?? Date.now())}</span>

@@ -1,12 +1,17 @@
 import type { Editor } from '@tiptap/core'
+import { NodeSelection } from '@tiptap/pm/state'
+import { imageToDataUrl, pickImageFile } from '../lib/images'
+import { toast } from '../lib/toasts'
 
-export type BlockKind = 'paragraph' | 'h1' | 'h2' | 'h3' | 'bullet' | 'ordered' | 'task' | 'quote' | 'callout' | 'code'
+export type BlockKind = 'paragraph' | 'h1' | 'h2' | 'h3' | 'h4' | 'toggle' | 'bullet' | 'ordered' | 'task' | 'quote' | 'callout' | 'code'
 
 export const BLOCK_LABELS: Record<BlockKind, string> = {
   paragraph: 'Text',
   h1: 'Heading 1',
   h2: 'Heading 2',
   h3: 'Heading 3',
+  h4: 'Heading 4',
+  toggle: 'Toggle list',
   bullet: 'Bulleted list',
   ordered: 'Numbered list',
   task: 'To-do list',
@@ -20,9 +25,11 @@ export function currentBlock(editor: Editor): BlockKind {
   if (editor.isActive('heading', { level: 1 })) return 'h1'
   if (editor.isActive('heading', { level: 2 })) return 'h2'
   if (editor.isActive('heading', { level: 3 })) return 'h3'
+  if (editor.isActive('heading', { level: 4 })) return 'h4'
   if (editor.isActive('taskList')) return 'task'
   if (editor.isActive('orderedList')) return 'ordered'
   if (editor.isActive('bulletList')) return 'bullet'
+  if (editor.isActive('callout', { kind: 'toggle' })) return 'toggle'
   if (editor.isActive('callout')) return 'callout'
   if (editor.isActive('blockquote')) return 'quote'
   return 'paragraph'
@@ -39,6 +46,18 @@ function unwrapLists(editor: Editor) {
 // Change the block under the cursor in place (works inside callouts too).
 export function turnInto(editor: Editor, kind: BlockKind) {
   const chain = () => editor.chain().focus()
+  // A whole callout/toggle picked from the block handle.
+  const sel = editor.state.selection
+  if (sel instanceof NodeSelection && sel.node.type.name === 'callout') {
+    if (kind === 'toggle' || kind === 'callout') {
+      const toggle = kind === 'toggle'
+      chain()
+        .updateAttributes('callout', toggle ? { kind: 'toggle', fold: '+' } : { kind: 'note', fold: '' })
+        .run()
+      return
+    }
+    chain().setTextSelection(sel.from + 2).unsetCallout().run()
+  }
   switch (kind) {
     case 'paragraph':
       unwrapLists(editor)
@@ -48,10 +67,34 @@ export function turnInto(editor: Editor, kind: BlockKind) {
     case 'h1':
     case 'h2':
     case 'h3':
+    case 'h4':
       unwrapLists(editor)
       chain()
-        .setHeading({ level: Number(kind[1]) as 1 | 2 | 3 })
+        .setHeading({ level: Number(kind[1]) as 1 | 2 | 3 | 4 })
         .run()
+      break
+    case 'toggle':
+      unwrapLists(editor)
+      if (editor.isActive('codeBlock') || editor.isActive('heading')) chain().setParagraph().run()
+      if (editor.isActive('callout')) {
+        chain().updateAttributes('callout', { kind: 'toggle', fold: '+' }).run()
+      } else {
+        // Notion-style: the line you had becomes the toggle's summary.
+        const { $from } = editor.state.selection
+        const text = $from.parent.type.name === 'paragraph' ? $from.parent.textContent.trim() : ''
+        chain().setCallout('toggle', '+').run()
+        if (text) {
+          const { $from: inner } = editor.state.selection
+          const [start, end] = [inner.start(), inner.end()]
+          chain()
+            .command(({ tr }) => {
+              tr.delete(start, end)
+              return true
+            })
+            .updateAttributes('callout', { title: text })
+            .run()
+        }
+      }
       break
     case 'bullet':
       if (editor.isActive('heading') || editor.isActive('codeBlock')) chain().setParagraph().run()
@@ -73,7 +116,8 @@ export function turnInto(editor: Editor, kind: BlockKind) {
     case 'callout':
       unwrapLists(editor)
       if (editor.isActive('codeBlock')) chain().setParagraph().run()
-      if (!editor.isActive('callout')) chain().setCallout('note').run()
+      if (editor.isActive('callout', { kind: 'toggle' })) chain().updateAttributes('callout', { kind: 'note', fold: '' }).run()
+      else if (!editor.isActive('callout')) chain().setCallout('note').run()
       break
     case 'code':
       unwrapLists(editor)
@@ -89,6 +133,28 @@ export function insertTable(editor: Editor) {
 export function insertImage(editor: Editor) {
   const src = window.prompt('Image link (https://…)')?.trim()
   if (src) editor.chain().focus().setImage({ src }).run()
+}
+
+/** Pick a picture from this device and put it in the note. */
+export async function uploadImage(editor: Editor) {
+  const file = await pickImageFile()
+  if (!file) return
+  try {
+    const src = await imageToDataUrl(file)
+    editor.chain().focus().setImage({ src, alt: file.name.replace(/\.[^.]+$/, '') }).run()
+  } catch {
+    toast('That picture couldn’t be opened. Try a PNG or JPEG.')
+  }
+}
+
+export function insertNow(editor: Editor) {
+  const t = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  editor.chain().focus().insertContent(t + ' ').run()
+}
+
+export function insertCallout(editor: Editor, kind: string) {
+  turnInto(editor, 'callout')
+  if (editor.isActive('callout')) editor.chain().focus().updateAttributes('callout', { kind }).run()
 }
 
 export function insertToday(editor: Editor) {

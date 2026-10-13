@@ -15,6 +15,7 @@ export const CALLOUT_KINDS: { kind: string; label: string; icon: string }[] = [
   { kind: 'quote', label: 'Quote', icon: '💬' },
   { kind: 'todo', label: 'To-do', icon: '☑️' },
   { kind: 'abstract', label: 'Summary', icon: '📄' },
+  { kind: 'toggle', label: 'Toggle', icon: '▸' },
 ]
 
 const ALIASES: Record<string, string> = {
@@ -43,14 +44,72 @@ export function calloutStyle(kind: string) {
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     callout: {
-      setCallout: (kind?: string) => ReturnType
+      setCallout: (kind?: string, fold?: string) => ReturnType
       unsetCallout: () => ReturnType
     }
   }
 }
 
-function CalloutView({ node, updateAttributes, editor, getPos }: ReactNodeViewProps) {
-  const { kind, title } = node.attrs as { kind: string; title: string }
+function Chevron({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={'toggle-chevron' + (open ? ' is-open' : '')}
+      contentEditable={false}
+      aria-label={open ? 'Collapse' : 'Expand'}
+      aria-expanded={open}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M8 5.5v13a1 1 0 0 0 1.53.85l10.4-6.5a1 1 0 0 0 0-1.7L9.53 4.65A1 1 0 0 0 8 5.5z" />
+      </svg>
+    </button>
+  )
+}
+
+// Toggle list: an arrow, a one-line summary, and blocks that hide under it.
+// Stored as an Obsidian foldable callout: `> [!toggle]+ Summary` (- when closed).
+function ToggleView({ node, updateAttributes, editor, getPos }: ReactNodeViewProps) {
+  const { title, fold } = node.attrs as { title: string; fold: string }
+  const open = fold !== '-'
+  const toBody = () => {
+    const pos = typeof getPos === 'function' ? getPos() : null
+    if (pos == null) return
+    if (!open) updateAttributes({ fold: '+' })
+    setTimeout(() => editor.chain().focus().setTextSelection(pos + 2).run(), 0)
+  }
+  return (
+    <NodeViewWrapper className={'toggle-block' + (open ? ' is-open' : ' is-closed')} data-kind="toggle">
+      <div className="toggle-head" contentEditable={false}>
+        <Chevron open={open} onClick={() => updateAttributes({ fold: open ? '-' : '+' })} />
+        <input
+          className="toggle-title"
+          value={title}
+          placeholder="Toggle"
+          onChange={(e) => updateAttributes({ title: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === 'ArrowDown') {
+              e.preventDefault()
+              toBody()
+            }
+          }}
+        />
+      </div>
+      <NodeViewContent className="toggle-content" />
+    </NodeViewWrapper>
+  )
+}
+
+function CalloutView(props: ReactNodeViewProps) {
+  if ((props.node.attrs as { kind: string }).kind === 'toggle') return <ToggleView {...props} />
+  return <BoxView {...props} />
+}
+
+function BoxView({ node, updateAttributes, editor, getPos }: ReactNodeViewProps) {
+  const { kind, title, fold } = node.attrs as { kind: string; title: string; fold: string }
+  const foldable = fold === '+' || fold === '-'
+  const open = fold !== '-'
   const style = calloutStyle(kind)
   const [menu, setMenu] = useState(false)
   const [showTitle, setShowTitle] = useState(!!title)
@@ -73,7 +132,7 @@ function CalloutView({ node, updateAttributes, editor, getPos }: ReactNodeViewPr
   }
 
   return (
-    <NodeViewWrapper className="callout" data-kind={style.kind}>
+    <NodeViewWrapper className={'callout' + (foldable && !open ? ' is-closed' : '')} data-kind={style.kind}>
       <div className="callout-icon-wrap" contentEditable={false} ref={menuRef}>
         <button type="button" className="callout-icon" onClick={() => setMenu((m) => !m)} aria-label="Change callout type">
           {style.icon}
@@ -108,6 +167,17 @@ function CalloutView({ node, updateAttributes, editor, getPos }: ReactNodeViewPr
             >
               {showTitle ? 'Remove title' : 'Add title'}
             </button>
+            <button
+              type="button"
+              className="menu-item"
+              onClick={() => {
+                updateAttributes({ fold: foldable ? '' : '+' })
+                if (!foldable && !title) setShowTitle(true)
+                setMenu(false)
+              }}
+            >
+              {foldable ? 'Always show contents' : 'Make collapsible'}
+            </button>
             <button type="button" className="menu-item" onClick={unwrap}>
               Turn into text
             </button>
@@ -115,7 +185,8 @@ function CalloutView({ node, updateAttributes, editor, getPos }: ReactNodeViewPr
         )}
       </div>
       <div className="callout-body">
-        {(showTitle || title) && (
+        {foldable && <Chevron open={open} onClick={() => updateAttributes({ fold: open ? '-' : '+' })} />}
+        {(showTitle || title || foldable) && (
           <input
             ref={titleRef}
             className="callout-title"
@@ -167,9 +238,9 @@ export const Callout = Node.create({
   addCommands() {
     return {
       setCallout:
-        (kind = 'note') =>
+        (kind = 'note', fold = '') =>
         ({ commands }) =>
-          commands.wrapIn(this.name, { kind }),
+          commands.wrapIn(this.name, { kind, fold }),
       unsetCallout:
         () =>
         ({ commands }) =>

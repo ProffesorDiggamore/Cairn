@@ -1,8 +1,8 @@
-import { Check, ChevronRight, CloudCog, ExternalLink, Info, LoaderCircle, Palette, RefreshCw, Smartphone, TriangleAlert, Database } from 'lucide-react'
+import { CalendarClock, Check, ChevronRight, CloudCog, Download, ExternalLink, Info, LoaderCircle, Palette, RefreshCw, Smartphone, TriangleAlert, Database } from 'lucide-react'
 import { useState } from 'react'
 import { clearAll } from '../lib/db'
 import { relativeTime, useIsMobile } from '../lib/hooks'
-import { setSettings, useSettings, type Font, type Theme } from '../lib/settings'
+import { ACCENTS, setSettings, useSettings, type Density, type Font, type PageWidth, type Palette as PaletteName, type Theme } from '../lib/settings'
 import { parseRepo } from '../lib/sync/github'
 import { runSync, testConnection } from '../lib/sync/manager'
 import { toast } from '../lib/toasts'
@@ -12,7 +12,7 @@ import { InstallSteps } from './InstallHint'
 import { Modal } from './ui'
 import { useUI } from './uiState'
 
-type Tab = 'sync' | 'appearance' | 'install' | 'data' | 'about'
+type Tab = 'sync' | 'appearance' | 'calendar' | 'install' | 'data' | 'about'
 
 export function SettingsModal() {
   const open = useUI((s) => s.settings)
@@ -22,6 +22,7 @@ export function SettingsModal() {
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'sync', label: 'Sync', icon: <CloudCog size={16} /> },
     { id: 'appearance', label: 'Appearance', icon: <Palette size={16} /> },
+    { id: 'calendar', label: 'Calendar & time', icon: <CalendarClock size={16} /> },
     { id: 'install', label: 'Install app', icon: <Smartphone size={16} /> },
     { id: 'data', label: 'Data', icon: <Database size={16} /> },
     { id: 'about', label: 'About', icon: <Info size={16} /> },
@@ -40,6 +41,7 @@ export function SettingsModal() {
         <div className="settings-panel">
           {tab === 'sync' && <SyncSettings />}
           {tab === 'appearance' && <AppearanceSettings />}
+          {tab === 'calendar' && <CalendarSettings />}
           {tab === 'install' && (
             <section>
               <h3>Install Cairn as an app</h3>
@@ -52,6 +54,15 @@ export function SettingsModal() {
                 <strong>On your iPhone:</strong> open this same link in Safari and use <em>Share → Add to Home Screen</em>.
                 <br />
                 <strong>On your Mac:</strong> open it in Safari and use <em>File → Add to Dock…</em>
+              </div>
+              <div className="settings-note">
+                <strong>Dock icon looks boxed in?</strong> Safari sometimes puts web-app icons on a white tile. Download the see-through pebble
+                below, then in the Cairn window choose <em>Cairn → Settings → General</em>, click the icon, and pick this file.
+                <div className="row-gap" style={{ marginTop: 8 }}>
+                  <a className="btn btn-sm" href="/cairn-pebble.png" download="Cairn pebble.png">
+                    <Download size={15} /> Download Dock icon
+                  </a>
+                </div>
               </div>
             </section>
           )}
@@ -80,14 +91,17 @@ export function SyncForm({ onConnected }: { onConnected?: () => void }) {
   const current = useSettings((s) => s.sync)
   const [repo, setRepo] = useState(current ? `${current.owner}/${current.repo}` : '')
   const [branch, setBranch] = useState(current?.branch ?? '')
+  const [folder, setFolder] = useState(current?.folder ?? '')
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<{ text: string; danger: boolean } | null>(null)
   const [help, setHelp] = useState(!current)
 
-  const connect = async (e: React.FormEvent) => {
+  const connect = async (e: React.FormEvent, anyway = false) => {
     e.preventDefault()
     setError(null)
+    setWarning(null)
     const parsed = parseRepo(repo)
     if (!parsed) return setError('Enter the repo as owner/name, like ProffesorDiggamore/Cairn, or paste its GitHub URL.')
     const tok = token.trim() || current?.token || ''
@@ -96,8 +110,22 @@ export function SyncForm({ onConnected }: { onConnected?: () => void }) {
     const probe = await testConnection({ ...parsed, branch: branch.trim() || 'main', token: tok })
     setBusy(false)
     if (!probe.ok) return setError(probe.error)
-    const cfg = { ...parsed, branch: branch.trim() || probe.defaultBranch, token: tok }
-    const changedRepo = !current || current.owner !== cfg.owner || current.repo !== cfg.repo || current.branch !== cfg.branch
+    const cleanFolder = folder.trim().replace(/^\/+|\/+$/g, '')
+    if (!anyway && probe.isPublic) {
+      return setWarning({
+        danger: true,
+        text: `${parsed.owner}/${parsed.repo} is a PUBLIC repo — anyone on the internet could read your notes. Make it private on GitHub (repo Settings → General → Danger Zone → Change visibility), or use a different private repo.`,
+      })
+    }
+    if (!anyway && probe.hasCode && !cleanFolder) {
+      return setWarning({
+        danger: false,
+        text: `${parsed.owner}/${parsed.repo} holds app code, not just notes. Notes are safest in their own private repo (see “Where should my notes go?” below). If you want them here anyway, type a folder name like “notes” above so they stay out of the code.`,
+      })
+    }
+    const cfg = { ...parsed, branch: branch.trim() || probe.defaultBranch, token: tok, ...(cleanFolder ? { folder: cleanFolder } : {}) }
+    const changedRepo =
+      !current || current.owner !== cfg.owner || current.repo !== cfg.repo || current.branch !== cfg.branch || (current.folder ?? '') !== cleanFolder
     if (changedRepo) {
       // A different repo: forget what we knew about the old one; local notes merge in.
       setMeta(EMPTY_META)
@@ -119,13 +147,19 @@ export function SyncForm({ onConnected }: { onConnected?: () => void }) {
     <form className="sync-form" onSubmit={connect}>
       <label className="field">
         <span>GitHub repository</span>
-        <input className="input" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="ProffesorDiggamore/Cairn" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+        <input className="input" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="ProffesorDiggamore/cairn-notes" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
       </label>
       <label className="field">
         <span>
           Branch <span className="muted">(leave empty for the default)</span>
         </span>
         <input className="input" value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="main" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+      </label>
+      <label className="field">
+        <span>
+          Folder in the repo <span className="muted">(leave empty when the repo is only for notes)</span>
+        </span>
+        <input className="input" value={folder} onChange={(e) => setFolder(e.target.value)} placeholder="notes" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
       </label>
       <label className="field">
         <span>Personal access token</span>
@@ -140,10 +174,19 @@ export function SyncForm({ onConnected }: { onConnected?: () => void }) {
         />
       </label>
       <button type="button" className="link-btn" onClick={() => setHelp(!help)}>
-        <ChevronRight size={14} className={help ? 'rot90' : ''} /> How do I get a token? (free, 1 minute)
+        <ChevronRight size={14} className={help ? 'rot90' : ''} /> Where should my notes go, and how do I get a token? (free, 2 minutes)
       </button>
       {help && (
         <ol className="help-steps">
+          <li>
+            <strong>Make a separate, private repo just for notes.</strong> Open{' '}
+            <a href="https://github.com/new?name=cairn-notes&visibility=private" target="_blank" rel="noopener noreferrer">
+              GitHub → New repository <ExternalLink size={12} />
+            </a>
+            , name it <strong>cairn-notes</strong>, choose <strong>Private</strong>, and click <strong>Create repository</strong>. Don’t use the
+            repo that holds the Cairn app — keeping notes on their own means app updates and notes never mix, and nothing private ends up on
+            the website.
+          </li>
           <li>
             Open{' '}
             <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">
@@ -155,15 +198,32 @@ export function SyncForm({ onConnected }: { onConnected?: () => void }) {
             Name it <strong>Cairn</strong> and pick an expiration (when it runs out, just paste a new one here).
           </li>
           <li>
-            Under <strong>Repository access</strong> choose <strong>Only select repositories</strong> and pick your notes repo.
+            Under <strong>Repository access</strong> choose <strong>Only select repositories</strong> and pick <strong>cairn-notes</strong>.
           </li>
           <li>
             Under <strong>Permissions → Repository permissions</strong>, set <strong>Contents</strong> to <strong>Read and write</strong>.
           </li>
           <li>
-            Click <strong>Generate token</strong>, copy it, and paste it above. Do this once on each device.
+            Click <strong>Generate token</strong>, copy it, and paste it above with <strong>your-name/cairn-notes</strong> as the repository.
+            Do this once on each device.
           </li>
         </ol>
+      )}
+      {warning && (
+        <div className={'settings-warn' + (warning.danger ? ' is-danger' : '')}>
+          <TriangleAlert size={16} />
+          <div>
+            {warning.text}
+            <div className="row-gap" style={{ marginTop: 8 }}>
+              <button type="button" className="btn btn-sm" onClick={(e) => void connect(e, true)}>
+                Connect anyway
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setWarning(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {error && (
         <div className="form-error">
@@ -206,6 +266,10 @@ function SyncSettings() {
             <span>{cfg.branch}</span>
           </div>
           <div className="sync-card-row">
+            <span className="muted">Notes folder</span>
+            <span>{cfg.folder ? `${cfg.folder}/` : 'Whole repo'}</span>
+          </div>
+          <div className="sync-card-row">
             <span className="muted">Status</span>
             <span className={sync.status === 'error' ? 'text-error' : ''}>
               {sync.status === 'syncing'
@@ -243,6 +307,10 @@ function SyncSettings() {
       ) : (
         <SyncForm onConnected={() => setEditing(false)} />
       )}
+      <p className="muted small" style={{ marginTop: 14 }}>
+        <strong>Moving your notes to a new repo?</strong> Create the new private repo, press <em>Change repo or token</em> and enter it — Cairn
+        copies every note on this device into it. The old copies stay in the old repo until you delete them there.
+      </p>
     </section>
   )
 }
@@ -271,8 +339,19 @@ function Toggle({ label, desc, value, onChange }: { label: string; desc?: string
   )
 }
 
+const PALETTES: { id: PaletteName; label: string; light: string[]; dark: string[] }[] = [
+  { id: 'default', label: 'Default', light: ['#ffffff', '#f8f8f7', '#37352f'], dark: ['#191919', '#202020', '#e0e0e0'] },
+  { id: 'paper', label: 'Paper', light: ['#fbf8f1', '#f3eee3', '#3b3428'], dark: ['#1f1b16', '#26211b', '#f5ead9'] },
+  { id: 'slate', label: 'Slate', light: ['#f8fafc', '#eef2f7', '#253041'], dark: ['#151a21', '#1b212a', '#e3e9f1'] },
+  { id: 'forest', label: 'Forest', light: ['#f7faf6', '#ecf3ec', '#24352a'], dark: ['#131b16', '#19231d', '#e2ede5'] },
+  { id: 'rose', label: 'Rosé', light: ['#fdf8f8', '#f8edef', '#3d2a30'], dark: ['#1c1518', '#241b1f', '#f3e6ea'] },
+  { id: 'oled', label: 'Pure black', light: ['#ffffff', '#f8f8f7', '#37352f'], dark: ['#000000', '#080808', '#e0e0e0'] },
+]
+
 function AppearanceSettings() {
   const s = useSettings()
+  const dark = document.documentElement.dataset.theme === 'dark'
+  const custom = !ACCENTS.some((a) => a.color.toLowerCase() === s.accent.toLowerCase())
   return (
     <section>
       <h3>Appearance</h3>
@@ -280,6 +359,44 @@ function AppearanceSettings() {
         <span>Theme</span>
         <Segmented<Theme> value={s.theme} options={[['system', 'System'], ['light', 'Light'], ['dark', 'Dark']]} onChange={(theme) => setSettings({ theme })} />
       </div>
+
+      <div className="setting-sub">Colours</div>
+      <div className="palette-row">
+        {PALETTES.map((p) => {
+          const c = dark ? p.dark : p.light
+          return (
+            <button key={p.id} type="button" className={'palette-option' + (s.palette === p.id ? ' is-active' : '')} onClick={() => setSettings({ palette: p.id })}>
+              <span className="palette-swatch">
+                <span style={{ background: c[1] }} />
+                <span style={{ background: c[0], flex: 2 }} />
+                <span style={{ background: s.accent, flex: 0.35 }} />
+              </span>
+              {p.label}
+            </button>
+          )
+        })}
+      </div>
+      <div className="setting-row" style={{ marginTop: 12 }}>
+        <span>Accent</span>
+        <div className="accent-row">
+          {ACCENTS.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              title={a.label}
+              aria-label={a.label}
+              className={'accent-dot' + (s.accent.toLowerCase() === a.color ? ' is-active' : '')}
+              style={{ background: a.color }}
+              onClick={() => setSettings({ accent: a.color })}
+            />
+          ))}
+          <label className={'accent-dot ic-custom' + (custom ? ' is-active' : '')} title="Any colour" style={custom ? { background: s.accent } : undefined}>
+            <input type="color" value={s.accent} onChange={(e) => setSettings({ accent: e.target.value })} />
+          </label>
+        </div>
+      </div>
+
+      <div className="setting-sub">Text</div>
       <div className="setting-row">
         <span>Font</span>
         <div className="font-picker">
@@ -288,6 +405,7 @@ function AppearanceSettings() {
               ['sans', 'Default'],
               ['serif', 'Serif'],
               ['mono', 'Mono'],
+              ['rounded', 'Rounded'],
             ] as [Font, string][]
           ).map(([f, label]) => (
             <button key={f} type="button" className={'font-option font-' + f + (s.font === f ? ' is-active' : '')} onClick={() => setSettings({ font: f })}>
@@ -297,9 +415,63 @@ function AppearanceSettings() {
           ))}
         </div>
       </div>
-      <Toggle label="Small text" desc="Fit more on screen." value={s.smallText} onChange={(smallText) => setSettings({ smallText })} />
-      <Toggle label="Full width" desc="Use the whole window for pages." value={s.fullWidth} onChange={(fullWidth) => setSettings({ fullWidth })} />
+      <div className="setting-row">
+        <span>Text size</span>
+        <div className="range-row">
+          <input type="range" min={13} max={22} step={1} value={s.fontSize} onChange={(e) => setSettings({ fontSize: Number(e.target.value) })} />
+          <span className="muted">{s.fontSize}px</span>
+        </div>
+      </div>
+      <div className="setting-row">
+        <span>Spacing</span>
+        <Segmented<Density> value={s.density} options={[['compact', 'Compact'], ['normal', 'Normal'], ['airy', 'Airy']]} onChange={(density) => setSettings({ density })} />
+      </div>
+      <div className="setting-row">
+        <span>Page width</span>
+        <Segmented<PageWidth>
+          value={s.pageWidth}
+          options={[['narrow', 'Narrow'], ['normal', 'Normal'], ['wide', 'Wide'], ['full', 'Full']]}
+          onChange={(pageWidth) => setSettings({ pageWidth, fullWidth: pageWidth === 'full' })}
+        />
+      </div>
+
+      <div className="setting-sub">Editing</div>
+      <div className="setting-row">
+        <span>Toggle-heading arrows</span>
+        <Segmented<'hover' | 'always'> value={s.foldArrows} options={[['hover', 'On hover'], ['always', 'Always']]} onChange={(foldArrows) => setSettings({ foldArrows })} />
+      </div>
       <Toggle label="Spell check" value={s.spellcheck} onChange={(spellcheck) => setSettings({ spellcheck })} />
+    </section>
+  )
+}
+
+function CalendarSettings() {
+  const s = useSettings()
+  return (
+    <section>
+      <h3>Calendar &amp; time</h3>
+      <p className="muted">
+        The Calendar button shows your daily notes by month and puts events on Google Calendar (or Apple Calendar with an .ics file) — no account
+        linking needed.
+      </p>
+      <Toggle
+        label="Little clocks next to times"
+        desc="Shows a tiny clock after times like “2:30pm” or “1-3”. Click it to add the line to your calendar."
+        value={s.timeClocks}
+        onChange={(timeClocks) => setSettings({ timeClocks })}
+      />
+      <Toggle
+        label="Treat plain ranges like “1-3” as times"
+        desc="Guesses 7–11 as morning and 12–6 as afternoon. Turn off if page numbers or scores get clocks."
+        value={s.bareTimeRanges}
+        onChange={(bareTimeRanges) => setSettings({ bareTimeRanges })}
+      />
+      <Toggle label="24-hour time" value={s.clock24} onChange={(clock24) => setSettings({ clock24 })} />
+      <Toggle label="Week starts on Monday" value={s.weekStartsMonday} onChange={(weekStartsMonday) => setSettings({ weekStartsMonday })} />
+      <div className="setting-row">
+        <span>Add events to</span>
+        <Segmented<'google' | 'ics'> value={s.calendarApp} options={[['google', 'Google Calendar'], ['ics', 'Apple Calendar']]} onChange={(calendarApp) => setSettings({ calendarApp })} />
+      </div>
       <label className="field">
         <span>Daily notes folder</span>
         <input className="input" value={s.dailyFolder} onChange={(e) => setSettings({ dailyFolder: e.target.value })} placeholder="Daily" />

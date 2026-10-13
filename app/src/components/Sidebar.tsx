@@ -13,14 +13,15 @@ import {
 } from 'lucide-react'
 import { useRef } from 'react'
 import { useIsMobile, useNoteIcons } from '../lib/hooks'
+import { NoteIcon } from './NoteIcon'
 import { titleOf } from '../lib/paths'
 import { navigate, openNote, useRoute } from '../lib/router'
 import { setSettings, useSettings } from '../lib/settings'
-import { createFolder, openDailyNote, useVault } from '../lib/vault'
+import { createFolder, useVault } from '../lib/vault'
 import { FileTree, newNoteIn, noteMenu } from './FileTree'
 import { SyncIndicator } from './SyncIndicator'
 import { Kbd, Logo, mod, openMenu } from './ui'
-import { useUI } from './uiState'
+import { openCalendar, useUI } from './uiState'
 
 function NavItem({ icon, label, onClick, active, hint }: { icon: React.ReactNode; label: string; onClick: () => void; active?: boolean; hint?: string }) {
   return (
@@ -70,7 +71,7 @@ export function Sidebar() {
       <nav className="sidebar-nav">
         <NavItem icon={<Search size={17} />} label="Search" hint={mobile ? undefined : `${mod}K`} onClick={go(() => useUI.setState({ palette: 'search' }))} />
         <NavItem icon={<House size={17} />} label="Home" active={route.name === 'home'} onClick={go(() => navigate({ name: 'home' }))} />
-        <NavItem icon={<CalendarDays size={17} />} label="Today" onClick={go(() => openNote(openDailyNote()))} />
+        <NavItem icon={<CalendarDays size={17} />} label="Calendar" onClick={go(() => openCalendar())} />
         <NavItem icon={<Network size={17} />} label="Graph" active={route.name === 'graph'} onClick={go(() => navigate({ name: 'graph' }))} />
         <NavItem icon={<SettingsIcon size={17} />} label="Settings" onClick={go(() => useUI.setState({ settings: true }))} />
       </nav>
@@ -92,7 +93,7 @@ export function Sidebar() {
                   openMenu({ x: e.clientX, y: e.clientY }, noteMenu(p))
                 }}
               >
-                <span className="tree-icon">{icons[p] ? <span className="tree-emoji">{icons[p]}</span> : <FileText size={16} strokeWidth={1.75} />}</span>
+                <span className="tree-icon">{icons[p] ? <NoteIcon className="tree-emoji" value={icons[p]} size={17} /> : <FileText size={16} strokeWidth={1.75} />}</span>
                 <span className="tree-name">{titleOf(p)}</span>
               </div>
             ))}

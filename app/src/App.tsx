@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef } from 'react'
+import { CalendarPanel } from './components/CalendarPanel'
 import { CommandPalette } from './components/CommandPalette'
 import { FolderPickerHost } from './components/FolderPicker'
 import { HomePage } from './components/HomePage'
@@ -32,10 +33,24 @@ export function App() {
   const theme = useResolvedTheme()
   const scroller = useRef<HTMLDivElement>(null)
 
+  const palette = useSettings((s) => s.palette)
+  const accent = useSettings((s) => s.accent)
+  const fontSize = useSettings((s) => s.fontSize)
+  const density = useSettings((s) => s.density)
+
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#191919' : '#ffffff')
-  }, [theme])
+    const root = document.documentElement
+    root.dataset.theme = theme
+    root.dataset.palette = palette
+    root.dataset.accent = ''
+    root.style.setProperty('--accent', accent)
+    root.style.setProperty('--editor-font-size', `${fontSize}px`)
+    root.style.setProperty('--editor-line-height', density === 'compact' ? '1.45' : density === 'airy' ? '1.75' : '1.6')
+    root.style.setProperty('--block-gap', density === 'compact' ? '1px' : density === 'airy' ? '10px' : '4px')
+    // Match the window chrome to the page colour.
+    const bg = getComputedStyle(root).getPropertyValue('--bg').trim() || (theme === 'dark' ? '#191919' : '#ffffff')
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg)
+  }, [theme, palette, accent, fontSize, density])
 
   useEffect(() => {
     if (ready) return startAutoSync()
@@ -136,6 +151,7 @@ export function App() {
       </main>
       <CommandPalette />
       <SettingsModal />
+      <CalendarPanel />
       <FolderPickerHost />
       <MenuHost />
       <InstallBanner />

@@ -1,5 +1,7 @@
 import { Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { isCustomIcon, isImageIcon } from '../lib/customIcon'
+import { IconCreator } from './IconCreator'
 
 interface Emoji {
   emoji: string
@@ -16,7 +18,18 @@ let cache: Group[] | null = null
 
 const QUICK = ['📝', '📚', '💡', '✅', '📌', '🎯', '📖', '🙏', '✝️', '🎓', '🧠', '💼', '🏀', '🎮', '🎵', '🌱', '🔥', '⭐', '❤️', '🗓️']
 
-export function EmojiPicker({ onPick, onRemove, onClose }: { onPick: (e: string) => void; onRemove?: () => void; onClose: () => void }) {
+export function EmojiPicker({
+  onPick,
+  onRemove,
+  onClose,
+  current = null,
+}: {
+  onPick: (e: string) => void
+  onRemove?: () => void
+  onClose: () => void
+  current?: string | null
+}) {
+  const [mode, setMode] = useState<'emoji' | 'make'>(isCustomIcon(current) || isImageIcon(current) ? 'make' : 'emoji')
   const [groups, setGroups] = useState<Group[] | null>(cache)
   const [q, setQ] = useState('')
   const ref = useRef<HTMLDivElement>(null)
@@ -59,17 +72,31 @@ export function EmojiPicker({ onPick, onRemove, onClose }: { onPick: (e: string)
   }, [groups, q])
 
   return (
-    <div className="popover emoji-picker" ref={ref}>
-      <div className="emoji-top">
-        <div className="emoji-search">
-          <Search size={14} />
-          <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search emoji…" />
+    <div className={'popover emoji-picker' + (mode === 'make' ? ' is-make' : '')} ref={ref}>
+      <div className="emoji-tabs">
+        <div className="segmented">
+          <button type="button" className={mode === 'emoji' ? 'is-active' : ''} onClick={() => setMode('emoji')}>
+            Emoji
+          </button>
+          <button type="button" className={mode === 'make' ? 'is-active' : ''} onClick={() => setMode('make')}>
+            Make your own
+          </button>
         </div>
         {onRemove && (
           <button type="button" className="btn btn-ghost btn-sm" onClick={onRemove}>
             Remove
           </button>
         )}
+      </div>
+      {mode === 'make' ? (
+        <IconCreator current={current} onPick={onPick} />
+      ) : (
+        <>
+      <div className="emoji-top">
+        <div className="emoji-search">
+          <Search size={14} />
+          <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search emoji…" />
+        </div>
       </div>
       <div className="emoji-scroll">
         {!q && (
@@ -99,6 +126,8 @@ export function EmojiPicker({ onPick, onRemove, onClose }: { onPick: (e: string)
         ))}
         {filtered && filtered[0]?.emojis.length === 0 && <div className="menu-empty">No emoji found</div>}
       </div>
+        </>
+      )}
     </div>
   )
 }

@@ -23,6 +23,8 @@ describe('canonical markdown round-trips exactly', () => {
     linkTitle: '[x](https://a.b "Title")\n',
     wikilinks: 'See [[Other Note]] and [[Folder/Note|alias]] and ![[image.png]].\n',
     wikiHeading: 'Jump to [[Note#Section]].\n',
+    toggle: '> [!toggle]+ Packing list\n> Socks\n',
+    toggleClosed: '> [!toggle]- Hidden\n> Inside\n',
     tasks: '- [ ] Open\n- [x] Done\n',
     bullets: '- one\n- two\n  - nested\n  - nested 2\n- three\n',
     ordered: '1. one\n2. two\n3. three\n',

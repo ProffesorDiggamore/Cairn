@@ -8,15 +8,28 @@ import {
   Check,
   ChevronDown,
   Code,
+  CodeXml,
   FileText,
+  Heading1,
+  Heading2,
+  Heading3,
+  Heading4,
   Highlighter,
   Italic,
+  Lightbulb,
   Link,
+  List,
+  ListCollapse,
+  ListOrdered,
+  ListTodo,
   Pencil,
+  Pilcrow,
+  Quote,
   Strikethrough,
   Trash,
   Underline,
   Unlink,
+  type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { BLOCK_LABELS, currentBlock, turnInto, type BlockKind } from './blocks'
@@ -36,6 +49,21 @@ function Btn({ active, onClick, title, children }: { active?: boolean; onClick: 
   )
 }
 
+const BLOCK_ICONS: Record<BlockKind, LucideIcon> = {
+  paragraph: Pilcrow,
+  h1: Heading1,
+  h2: Heading2,
+  h3: Heading3,
+  h4: Heading4,
+  toggle: ListCollapse,
+  bullet: List,
+  ordered: ListOrdered,
+  task: ListTodo,
+  quote: Quote,
+  callout: Lightbulb,
+  code: CodeXml,
+}
+
 export function TurnIntoMenu({ editor, onDone, kinds }: { editor: Editor; onDone: () => void; kinds?: BlockKind[] }) {
   const cur = currentBlock(editor)
   const list = kinds ?? (Object.keys(BLOCK_LABELS) as BlockKind[])
@@ -52,6 +80,10 @@ export function TurnIntoMenu({ editor, onDone, kinds }: { editor: Editor; onDone
             onDone()
           }}
         >
+          {(() => {
+            const Icon = BLOCK_ICONS[k]
+            return <Icon size={15} strokeWidth={1.75} className="menu-kind-icon" />
+          })()}
           {BLOCK_LABELS[k]}
           {k === cur && <Check size={14} className="menu-check" />}
         </button>

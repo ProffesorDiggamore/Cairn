@@ -30,6 +30,8 @@ export interface SyncConfig {
   repo: string
   branch: string
   token: string
+  /** Folder inside the repo that holds the notes ('' = the whole repo). */
+  folder?: string
 }
 
 export const EMPTY_META: SyncMeta = { head: null, tree: null, remote: {} }

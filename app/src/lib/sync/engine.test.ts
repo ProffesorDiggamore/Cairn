@@ -354,3 +354,16 @@ describe('sync engine', () => {
     expect(all).toContain('from b')
   })
 })
+
+describe('notes folder inside a repo', () => {
+  it('only syncs notes under the folder and writes back into it', async () => {
+    await gh.commitFiles({ 'README.md': 'repo readme\n', 'notes/A.md': 'a\n', 'notes/Sub/B.md': 'b\n', 'app/x.md': 'code' })
+    await syncOnce(gh, a, Date.now, 'notes/')
+    expect(a.text()).toEqual({ 'A.md': 'a\n', 'Sub/B.md': 'b\n' })
+    a.edit('New.md', 'new\n')
+    await syncOnce(gh, a, Date.now, 'notes/')
+    expect(gh.files()['notes/New.md']).toBe('new\n')
+    expect(gh.files()['New.md']).toBeUndefined()
+    expect(gh.files()['README.md']).toBe('repo readme\n')
+  })
+})

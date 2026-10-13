@@ -114,7 +114,7 @@ export function BlockHandle({ editor }: { editor: Editor }) {
             <TurnIntoMenu
               editor={editor}
               onDone={() => setMenu(null)}
-              kinds={['paragraph', 'h1', 'h2', 'h3', 'bullet', 'ordered', 'task', 'quote', 'callout', 'code']}
+              kinds={['paragraph', 'h1', 'h2', 'h3', 'h4', 'toggle', 'bullet', 'ordered', 'task', 'quote', 'callout', 'code']}
             />
           </div>
         )}

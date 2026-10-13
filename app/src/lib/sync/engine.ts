@@ -26,7 +26,13 @@ export interface SyncResult {
 
 const keepDir = (dir: string) => !dir.split('/').some((p) => p.startsWith('.')) && dir !== 'app' && dir !== 'node_modules'
 
-export async function syncOnce(api: RemoteApi, vault: VaultAdapter, now: () => number = Date.now): Promise<SyncResult> {
+/** Repo path <-> vault path when notes live in a folder of the repo. */
+export function folderPrefix(folder: string | undefined): string {
+  const f = (folder ?? '').trim().replace(/^\/+|\/+$/g, '')
+  return f ? f + '/' : ''
+}
+
+export async function syncOnce(api: RemoteApi, vault: VaultAdapter, now: () => number = Date.now, prefix = ''): Promise<SyncResult> {
   const result: SyncResult = { pulled: [], pushed: [], conflicts: [] }
   for (let attempt = 0; attempt < 5; attempt++) {
     const head = await api.getHead()
@@ -37,12 +43,16 @@ export async function syncOnce(api: RemoteApi, vault: VaultAdapter, now: () => n
       const tree = await api.getCommitTree(head)
       const blobs = await api.listBlobs(tree, keepDir)
       const remote: Record<string, string> = {}
-      for (const b of blobs) if (isVaultNotePath(b.path)) remote[b.path] = b.sha
+      for (const b of blobs) {
+        if (prefix && !b.path.startsWith(prefix)) continue
+        const path = b.path.slice(prefix.length)
+        if (isVaultNotePath(path)) remote[path] = b.sha
+      }
       meta = { head, tree, remote }
     }
     await reconcile(api, vault, meta.remote, result, now)
     vault.setMeta(meta)
-    const outcome = await push(api, vault, meta, result, now)
+    const outcome = await push(api, vault, meta, result, now, prefix)
     if (outcome === 'done') return result
   }
   throw new Error('Sync kept colliding with changes from another device. It will try again shortly.')
@@ -144,7 +154,7 @@ function commitMessage(changes: { path: string; kind: 'add' | 'update' | 'delete
   return `Sync ${changes.length} files${extra ? ` (${extra})` : ''}`
 }
 
-async function push(api: RemoteApi, vault: VaultAdapter, meta: SyncMeta, result: SyncResult, now: () => number): Promise<'done' | 'retry'> {
+async function push(api: RemoteApi, vault: VaultAdapter, meta: SyncMeta, result: SyncResult, now: () => number, prefix = ''): Promise<'done' | 'retry'> {
   const files = vault.files()
   const entries: NewTreeEntry[] = []
   const sent: { path: string; content: string | null; kind: 'add' | 'update' | 'delete' }[] = []
@@ -153,13 +163,13 @@ async function push(api: RemoteApi, vault: VaultAdapter, meta: SyncMeta, result:
     const r = meta.remote[f.path]
     if (f.deleted) {
       if (f.baseSha && r === f.baseSha) {
-        entries.push({ path: f.path, mode: '100644', type: 'blob', sha: null })
+        entries.push({ path: prefix + f.path, mode: '100644', type: 'blob', sha: null })
         sent.push({ path: f.path, content: null, kind: 'delete' })
       }
       continue
     }
     if ((f.baseSha ?? undefined) !== r) continue // not reconciled yet; next round
-    entries.push({ path: f.path, mode: '100644', type: 'blob', content: f.content })
+    entries.push({ path: prefix + f.path, mode: '100644', type: 'blob', content: f.content })
     sent.push({ path: f.path, content: f.content, kind: f.baseSha ? 'update' : 'add' })
   }
   if (!entries.length) return 'done'

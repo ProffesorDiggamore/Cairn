@@ -2,6 +2,7 @@ import { Command } from 'cmdk'
 import { CalendarDays, FilePlus, FileText, House, Moon, Network, PanelLeft, RefreshCw, Search, Settings, Sun, Trash } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNoteIcons } from '../lib/hooks'
+import { NoteIcon } from './NoteIcon'
 import { dirname, titleOf } from '../lib/paths'
 import { navigate, openNote } from '../lib/router'
 import { searchNotes } from '../lib/search'
@@ -10,7 +11,7 @@ import { runSync } from '../lib/sync/manager'
 import { createNote, openDailyNote, useVault } from '../lib/vault'
 import { newNoteIn } from './FileTree'
 import { mod } from './ui'
-import { useUI } from './uiState'
+import { openCalendar, useUI } from './uiState'
 
 interface Cmd {
   id: string
@@ -38,6 +39,7 @@ export function CommandPalette() {
   const commands: Cmd[] = useMemo(
     () => [
       { id: 'new', label: 'New page', icon: <FilePlus size={16} />, hint: `${mod}N`, run: () => newNoteIn(''), keywords: 'create add note' },
+      { id: 'calendar', label: 'Open calendar', icon: <CalendarDays size={16} />, run: () => openCalendar(), keywords: 'calendar event google schedule month' },
       { id: 'today', label: 'Open today’s note', icon: <CalendarDays size={16} />, run: () => openNote(openDailyNote()), keywords: 'daily journal date' },
       { id: 'home', label: 'Go home', icon: <House size={16} />, run: () => navigate({ name: 'home' }) },
       { id: 'graph', label: 'Open graph view', icon: <Network size={16} />, run: () => navigate({ name: 'graph' }), keywords: 'links map' },
@@ -95,7 +97,7 @@ export function CommandPalette() {
             <Command.Group heading="Recent">
               {recentPaths.map((p) => (
                 <Command.Item key={p} value={'r:' + p} onSelect={() => run(() => openNote(p))} className="palette-item">
-                  <span className="palette-icon">{icons[p] ?? <FileText size={16} strokeWidth={1.75} />}</span>
+                  <span className="palette-icon">{icons[p] ? <NoteIcon value={icons[p]} size={17} /> : <FileText size={16} strokeWidth={1.75} />}</span>
                   <span className="palette-title">{titleOf(p)}</span>
                   {dirname(p) && <span className="palette-sub">{dirname(p)}</span>}
                 </Command.Item>
@@ -107,7 +109,7 @@ export function CommandPalette() {
             <Command.Group heading="Pages">
               {hits.map((h) => (
                 <Command.Item key={h.path} value={'n:' + h.path} onSelect={() => run(() => openNote(h.path))} className="palette-item palette-hit">
-                  <span className="palette-icon">{icons[h.path] ?? <FileText size={16} strokeWidth={1.75} />}</span>
+                  <span className="palette-icon">{icons[h.path] ? <NoteIcon value={icons[h.path]} size={17} /> : <FileText size={16} strokeWidth={1.75} />}</span>
                   <span className="palette-main">
                     <span className="palette-title">
                       {h.title}

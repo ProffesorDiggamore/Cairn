@@ -135,22 +135,20 @@ export function Modal({
 
 // --------------------------------------------------------------------- logo
 
+// Just the pebble — no tile behind it, so it sits naturally on any background.
 export function Logo({ size = 22 }: { size?: number }) {
   const id = useId().replace(/:/g, '')
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true" className="logo">
       <defs>
         <radialGradient id={`pebble-${id}`} cx="0.36" cy="0.3" r="0.85">
-          <stop offset="0" stopColor="#8d988f" />
-          <stop offset="1" stopColor="#363f39" />
+          <stop offset="0" stopColor="#9ba69d" />
+          <stop offset="1" stopColor="#323b35" />
         </radialGradient>
       </defs>
-      <rect width="100" height="100" rx="22" fill="#e2e6df" />
-      <g transform="translate(50 52) scale(1.08) translate(-50 -52)">
-        <ellipse cx="51" cy="70" rx="25" ry="5.5" fill="#c6ccc2" />
-        <ellipse cx="50" cy="52" rx="28" ry="20" transform="rotate(-8 50 52)" fill={`url(#pebble-${id})`} />
-        <ellipse cx="40" cy="43" rx="9" ry="4.2" transform="rotate(-18 40 43)" fill="#ffffff" opacity="0.22" />
-      </g>
+      <ellipse cx="51" cy="79" rx="32" ry="4.5" fill="currentColor" opacity="0.14" />
+      <ellipse cx="50" cy="53" rx="41" ry="28.5" transform="rotate(-8 50 53)" fill={`url(#pebble-${id})`} />
+      <ellipse cx="36" cy="40" rx="13" ry="6" transform="rotate(-18 36 40)" fill="#ffffff" opacity="0.22" />
     </svg>
   )
 }

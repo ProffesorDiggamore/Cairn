@@ -259,9 +259,12 @@ export function todayTitle(d = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-export function openDailyNote(): string {
-  const folder = sanitizeFolder(useSettings.getState().dailyFolder)
-  const path = joinPath(folder, todayTitle() + NOTE_EXT)
+export function dailyNotePath(d = new Date()): string {
+  return joinPath(sanitizeFolder(useSettings.getState().dailyFolder), todayTitle(d) + NOTE_EXT)
+}
+
+export function openDailyNote(d = new Date()): string {
+  const path = dailyNotePath(d)
   if (exists(path)) return path
-  return createNote({ folder, title: todayTitle() })
+  return createNote({ folder: sanitizeFolder(useSettings.getState().dailyFolder), title: todayTitle(d) })
 }

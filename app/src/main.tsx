@@ -7,6 +7,7 @@ import { initVault } from './lib/vault'
 import './styles/base.css'
 import './styles/app.css'
 import './styles/editor.css'
+import './styles/extras.css'
 
 void initVault()
 

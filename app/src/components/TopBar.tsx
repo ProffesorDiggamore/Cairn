@@ -1,5 +1,6 @@
 import { ClipboardCopy, Ellipsis, FileText, GitBranch, Menu, Star } from 'lucide-react'
 import { useIsMobile, useNoteIcons } from '../lib/hooks'
+import { NoteIcon } from './NoteIcon'
 import { splitFrontmatter } from '../lib/markdown/frontmatter'
 import { titleOf } from '../lib/paths'
 import { useRoute } from '../lib/router'
@@ -37,7 +38,7 @@ export function TopBar() {
           </span>
         ))}
         <span className="crumb crumb-current">
-          {icons[route.path] ? <span className="crumb-icon">{icons[route.path]}</span> : <FileText size={15} strokeWidth={1.75} />}
+          {icons[route.path] ? <NoteIcon className="crumb-icon" value={icons[route.path]} size={16} /> : <FileText size={15} strokeWidth={1.75} />}
           {titleOf(route.path)}
         </span>
       </div>
@@ -65,7 +66,7 @@ export function TopBar() {
         icon: <GitBranch size={15} />,
         onSelect: () =>
           window.open(
-            `https://github.com/${sync.owner}/${sync.repo}/blob/${encodeURIComponent(sync.branch)}/${path.split('/').map(encodeURIComponent).join('/')}`,
+            `https://github.com/${sync.owner}/${sync.repo}/blob/${encodeURIComponent(sync.branch)}/${((sync.folder ? sync.folder + '/' : '') + path).split('/').map(encodeURIComponent).join('/')}`,
             '_blank',
             'noopener',
           ),

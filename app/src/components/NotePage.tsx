@@ -3,7 +3,10 @@ import { ArrowUpRight, FaceSlightlySmilingPlus, FileQuestion, FileText, Link2 } 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LinkItem } from '../editor/extensions/wikiLinkSuggest'
 import { NoteEditor } from '../editor/NoteEditor'
-import { useIsTouch, useLinkIndex, useNoteIcons, useResolver } from '../lib/hooks'
+import type { TimeClick } from '../editor/extensions/timeChips'
+import { dateFromTitle, downloadIcs, findDate, formatSpan, isoDay, openInGoogleCalendar, titleAround, type CalendarEvent } from '../lib/calendar'
+import { useIsMobile, useIsTouch, useLinkIndex, useNoteIcons, useResolver } from '../lib/hooks'
+import { NoteIcon } from './NoteIcon'
 import { linkContexts, stripSubpath } from '../lib/links'
 import { getField, joinFrontmatter, setField, splitFrontmatter } from '../lib/markdown/frontmatter'
 import { dirname, titleOf } from '../lib/paths'
@@ -13,6 +16,8 @@ import { toast } from '../lib/toasts'
 import { createNote, renameNote, updateContent, useVault } from '../lib/vault'
 import { EmojiPicker } from './EmojiPicker'
 import { MobileToolbar } from './MobileToolbar'
+import { openMenu } from './ui'
+import { openCalendar } from './uiState'
 
 // Cross-page hand-offs (focus the body after renaming, jump to a #heading).
 let focusBodyOnMount = false
@@ -63,6 +68,22 @@ export function NotePage({ path }: { path: string }) {
   return <NoteView key={path} path={path} />
 }
 
+// Clicking a little clock: put that line on a calendar.
+function timeMenu(path: string, { match, blockText, anchor }: TimeClick) {
+  const date = dateFromTitle(titleOf(path)) ?? findDate(blockText) ?? new Date()
+  const ev: CalendarEvent = { title: titleAround(blockText, match) || titleOf(path), date, start: match.start, end: match.end }
+  const h24 = useSettings.getState().clock24
+  openMenu(
+    anchor,
+    [
+      { label: 'Add to Google Calendar', onSelect: () => openInGoogleCalendar(ev) },
+      { label: 'Add to Apple Calendar (.ics)', onSelect: () => downloadIcs(ev) },
+      { label: 'Edit details…', onSelect: () => openCalendar({ title: ev.title, date: isoDay(date), start: match.start, end: match.end }) },
+    ],
+    `${formatSpan(match.start, match.end, h24)} · ${date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}`,
+  )
+}
+
 function NoteView({ path }: { path: string }) {
   const file = useVault((s) => s.files[path])
   const content = file?.content ?? ''
@@ -70,11 +91,12 @@ function NoteView({ path }: { path: string }) {
   const fm = useRef(frontmatter)
   fm.current = frontmatter
   const icon = getField(frontmatter, 'icon')
-  const fullWidth = useSettings((s) => s.fullWidth)
+  const pageWidth = useSettings((s) => s.pageWidth)
   const font = useSettings((s) => s.font)
-  const smallText = useSettings((s) => s.smallText)
+  const foldArrows = useSettings((s) => s.foldArrows)
   const spellcheck = useSettings((s) => s.spellcheck)
   const touch = useIsTouch()
+  const mobile = useIsMobile()
   const resolver = useResolver()
   const resolverRef = useRef(resolver)
   resolverRef.current = resolver
@@ -154,12 +176,12 @@ function NoteView({ path }: { path: string }) {
   const isNew = !!file && !file.content && Date.now() - file.ctime < 4000
 
   return (
-    <div className={`page font-${font}${fullWidth ? ' is-full' : ''}${smallText ? ' is-small' : ''}`}>
+    <div className={`page font-${font} width-${pageWidth}${pageWidth === 'full' ? ' is-full' : ''}${foldArrows === 'always' ? ' folds-always' : ''}`}>
       <div className="page-inner">
         <div className={'page-icon-row' + (icon ? ' has-icon' : '')}>
           {icon ? (
             <button type="button" className="page-icon" onClick={() => setPicker(true)} aria-label="Change icon">
-              {icon}
+              <NoteIcon value={icon} size={mobile ? 58 : 76} />
             </button>
           ) : (
             <div className="page-controls">
@@ -168,7 +190,7 @@ function NoteView({ path }: { path: string }) {
               </button>
             </div>
           )}
-          {picker && <EmojiPicker onPick={setIcon} onRemove={icon ? () => setIcon(null) : undefined} onClose={() => setPicker(false)} />}
+          {picker && <EmojiPicker current={icon} onPick={setIcon} onRemove={icon ? () => setIcon(null) : undefined} onClose={() => setPicker(false)} />}
         </div>
 
         <TitleField path={path} autoFocus={isNew} onEnter={() => editor?.commands.focus('start')} />
@@ -190,6 +212,8 @@ function NoteView({ path }: { path: string }) {
           onReady={onReady}
           spellcheck={spellcheck}
           touch={touch}
+          foldKey={path}
+          onTimeClick={(info) => timeMenu(path, info)}
         />
 
         <div className="page-tail" onClick={() => editor?.commands.focus('end')} />
@@ -272,7 +296,7 @@ function Backlinks({ path }: { path: string }) {
         return (
           <button type="button" key={src} className="backlink" onClick={() => openNote(src)}>
             <span className="backlink-title">
-              {icons[src] ? <span className="tree-emoji">{icons[src]}</span> : <FileText size={15} strokeWidth={1.75} />}
+              {icons[src] ? <NoteIcon className="tree-emoji" value={icons[src]} size={16} /> : <FileText size={15} strokeWidth={1.75} />}
               {titleOf(src)}
               <ArrowUpRight size={13} className="backlink-arrow" />
             </span>

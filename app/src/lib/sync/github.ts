@@ -87,6 +87,13 @@ export class GitHubApi {
     return this.req<{ full_name: string; private: boolean; default_branch: string; permissions?: { push?: boolean } }>('GET', '')
   }
 
+  /** True when the repo's top level looks like a software project, not a notes vault. */
+  async looksLikeCode(): Promise<boolean> {
+    const top = await this.req<{ name: string; type: string }[]>('GET', '/contents/')
+    const names = new Set(top.map((e) => e.name.toLowerCase()))
+    return ['app', 'src', 'package.json', 'netlify.toml', 'cargo.toml', 'package.swift'].some((n) => names.has(n))
+  }
+
   // null when the branch doesn't exist yet or the repo is empty.
   async getHead(): Promise<string | null> {
     try {

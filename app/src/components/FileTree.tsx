@@ -1,6 +1,7 @@
 import { ChevronRight, FilePlus, FileText, Folder, FolderOpen, FolderPlus, Pencil, Ellipsis, Plus, Star, Trash, FolderInput, Copy } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useNoteIcons } from '../lib/hooks'
+import { NoteIcon } from './NoteIcon'
 import { ancestors, basename, dirname, titleOf } from '../lib/paths'
 import { openNote, useRoute } from '../lib/router'
 import { setSettings, toggleFavorite, useSettings } from '../lib/settings'
@@ -192,7 +193,7 @@ const Row = memo(function Row({
             {expanded ? <FolderOpen size={16} strokeWidth={1.75} /> : <Folder size={16} strokeWidth={1.75} />}
           </>
         ) : icon ? (
-          <span className="tree-emoji">{icon}</span>
+          <NoteIcon className="tree-emoji" value={icon} size={17} />
         ) : (
           <FileText size={16} strokeWidth={1.75} />
         )}

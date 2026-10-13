@@ -2,21 +2,27 @@ import { getSchema, type Editor, type JSONContent } from '@tiptap/core'
 import Highlight from '@tiptap/extension-highlight'
 import Image from '@tiptap/extension-image'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
-import { Placeholder } from '@tiptap/extensions'
 import { Slice } from '@tiptap/pm/model'
+import type { EditorView } from '@tiptap/pm/view'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { merge } from 'node-diff3'
 import { useEffect, useMemo, useRef } from 'react'
 import { registerFlusher } from '../lib/flush'
+import { imageFiles, imageToDataUrl } from '../lib/images'
+import { useSettings } from '../lib/settings'
+import { toast } from '../lib/toasts'
 import { markdownToDoc } from '../lib/markdown/parse'
 import { docToMarkdown } from '../lib/markdown/serialize'
 import { BlockHandle } from './BlockHandle'
 import { Callout } from './extensions/callout'
 import { CodeBlock } from './extensions/codeBlock'
+import { HeadingFold, loadFolds, saveFolds } from './extensions/headingFold'
+import { CurrentPlaceholder } from './extensions/placeholder'
 import { RawBlock, RawInline } from './extensions/rawNodes'
 import { SlashCommand } from './extensions/slashCommand'
 import { tableExtensions } from './extensions/table'
+import { refreshTimeChips, TimeChips, type TimeClick } from './extensions/timeChips'
 import { WikiLink } from './extensions/wikiLink'
 import { WikiLinkSuggest, type LinkItem } from './extensions/wikiLinkSuggest'
 import { LinkToolbar, SelectionToolbar, TableToolbar } from './Toolbars'
@@ -32,6 +38,9 @@ export interface NoteEditorProps {
   onReady?: (editor: Editor | null) => void
   spellcheck?: boolean
   touch?: boolean
+  /** Where this note's folded headings are remembered (its path). */
+  foldKey?: string
+  onTimeClick?: (info: TimeClick) => void
 }
 
 const looksLikeMarkdown = (t: string) =>
@@ -67,21 +76,48 @@ function buildExtensions(p: { current: NoteEditorProps }) {
     }),
     WikiLinkSuggest.configure({ items: (q) => p.current.linkItems(q) }),
     SlashCommand,
-    Placeholder.configure({
-      showOnlyCurrent: true,
-      includeChildren: true,
-      placeholder: ({ node, editor, pos }) => {
+    CurrentPlaceholder.configure({
+      placeholder: (node, $pos) => {
         if (node.type.name === 'heading') return `Heading ${node.attrs.level}`
         if (node.type.name === 'codeBlock' || node.type.name === 'rawBlock') return ''
-        const $pos = editor.state.doc.resolve(pos)
-        const parent = $pos.depth > 0 ? $pos.node($pos.depth).type.name : ''
-        if (parent === 'taskItem') return 'To-do'
-        if (parent === 'listItem') return 'List'
-        if (parent === 'callout' || parent === 'blockquote' || parent.startsWith('table')) return ''
+        const parent = $pos.depth > 1 ? $pos.node($pos.depth - 1) : null
+        const kind = parent?.type.name ?? ''
+        if (kind === 'taskItem') return 'To-do'
+        if (kind === 'listItem') return 'List'
+        if (kind === 'callout' && parent?.attrs.kind === 'toggle') return 'Empty toggle — write or drop blocks inside'
+        if (kind === 'callout' || kind === 'blockquote' || kind.startsWith('table')) return ''
         return p.current.touch ? 'Type, or tap + for blocks…' : 'Write, or press ‘/’ for commands…'
       },
     }),
+    HeadingFold.configure({
+      load: () => (p.current.foldKey ? loadFolds(p.current.foldKey) : []),
+      save: (keys) => p.current.foldKey && saveFolds(p.current.foldKey, keys),
+    }),
+    TimeChips.configure({
+      enabled: () => useSettings.getState().timeClocks,
+      bareRanges: () => useSettings.getState().bareTimeRanges,
+      h24: () => useSettings.getState().clock24,
+      onClick: (info) => p.current.onTimeClick?.(info),
+    }),
   ]
+}
+
+// Screenshots and photos go into the note as compact embedded images.
+async function insertImages(view: EditorView, files: File[], at?: number) {
+  const big = files.some((f) => f.size > 1_500_000)
+  if (big) toast('Adding image…', { duration: 1500 })
+  for (const file of files) {
+    try {
+      const src = await imageToDataUrl(file)
+      if (view.isDestroyed) return
+      const node = view.state.schema.nodes.image.create({ src, alt: file.name && !/^image\.\w+$/.test(file.name) ? file.name.replace(/\.[^.]+$/, '') : null })
+      const tr = at === undefined ? view.state.tr.replaceSelectionWith(node) : view.state.tr.insert(at, node)
+      view.dispatch(tr.scrollIntoView())
+      if (at !== undefined) at += node.nodeSize
+    } catch {
+      toast('That image couldn’t be added. Try a PNG or JPEG.')
+    }
+  }
 }
 
 // Never let a weird file crash the editor: fall back to raw source.
@@ -125,6 +161,13 @@ export function NoteEditor(props: NoteEditorProps) {
       handlePaste: (view, event) => {
         const text = event.clipboardData?.getData('text/plain')
         const html = event.clipboardData?.getData('text/html')
+        // A screenshot (⌘⇧⌃4) or copied picture arrives as a file with no HTML.
+        const pics = imageFiles(event.clipboardData?.files?.length ? event.clipboardData.files : event.clipboardData?.items)
+        if (pics.length && !(html && /<img\b/i.test(html))) {
+          event.preventDefault()
+          void insertImages(view, pics)
+          return true
+        }
         // Rich HTML (web pages, Cairn itself) pastes as-is; plain text and code
         // editors' span soup get parsed as markdown.
         const rich = !!html && /<(p|h[1-6]|ul|ol|li|table|blockquote|pre|img|strong|em|b|i|a)\b/i.test(html)
@@ -146,6 +189,21 @@ export function NoteEditor(props: NoteEditorProps) {
         } catch {
           return slice.content.textBetween(0, slice.content.size, '\n\n')
         }
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved) return false
+        const pics = imageFiles(event.dataTransfer?.files)
+        if (!pics.length) return false
+        event.preventDefault()
+        const at = view.posAtCoords({ left: event.clientX, top: event.clientY })
+        let pos = at?.pos
+        if (pos !== undefined) {
+          // Drop between blocks, not inside a word.
+          const $p = view.state.doc.resolve(pos)
+          pos = $p.depth > 0 ? $p.after(1) : pos
+        }
+        void insertImages(view, pics, pos)
+        return true
       },
       handleClick: (_view, _pos, event) => {
         const a = (event.target as HTMLElement).closest('a[href]') as HTMLAnchorElement | null
@@ -215,6 +273,14 @@ export function NoteEditor(props: NoteEditorProps) {
   useEffect(() => {
     editor?.view.dom.setAttribute('spellcheck', String(props.spellcheck ?? true))
   }, [editor, props.spellcheck])
+
+  // Clock settings changed: redraw the little clocks.
+  useEffect(() => {
+    if (!editor) return
+    return useSettings.subscribe((s, prev) => {
+      if (s.timeClocks !== prev.timeClocks || s.bareTimeRanges !== prev.bareTimeRanges || s.clock24 !== prev.clock24) refreshTimeChips(editor)
+    })
+  }, [editor])
 
   if (!editor) return null
   return (
